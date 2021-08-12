@@ -1,0 +1,145 @@
+This customization was passed on to me in a broken state, it is failry large so I only have a few snipits below.
+
+Project Spanned 6/24/2021-7/20/2021 ~80 Hours To Complete
+======
+		StartMin = Datediff(VBminute, currentDay,  rsTimeCardLines.Fields("lmlActualStartTime"))
+		EndOfJob = StartMin + BreakCode2Min(laborHours)	
+
+			'If count is still zero (First Run) then set it to the current day (i)
+			if sumOfHours > 0 then	
+				for b = 1 to 3  
+					if rsBreak.Fields("lmtBreak"&b&"Paid").value then
+					'skip paid breaks
+					else
+						lmlActualEndTimeHour = datepart("h", rsTimeCardLines.Fields("lmlActualEndTime").value)
+						'Flag so it will not run more than once a day
+						if EndOfJob > (BreakCode2min(rsBreak.Fields("lmtBreak"&b&"StartTime").value) - 1) AND StartMin < BreakCode2min(rsBreak.Fields("lmtBreak"&b&"StartTime").value)  then
+								BreakTime = BreakCode2min(rsBreak.Fields("lmtBreak"&b&"EndTime").value) - BreakCode2min(rsBreak.Fields("lmtBreak"&b&"StartTime").value)
+							'Converted back to hours
+							ShiftPlusBreak = (sumOfHours * 60 + BreakTime) / 60
+							rsTimeCardLines.Fields("lmlActualEndTime").value=Dateadd("n", ShiftPlusBreak * 60, NextTimeBlock)
+						else
+							rsTimeCardLines.Fields("lmlActualEndTime").value = Dateadd("n", sumOfHours * 60, NextTimeBlock)
+						end if
+					end if		
+				next
+		 end if
+		rsTimeCardLines.UpdateBatch			
+		end if
+=========
+    
+  'Recalc TimeCards
+	for i=1 to 7  
+		if ReDrawDay(i-1) then 
+			set TcDay = new TsDay
+			TcDay.CalanderDate = dateadd("d",i-1,StartDate)
+			Set rsTimeCards = CreateObject("adodb.recordset")
+			rsTimeCards.Open "Select * from timecards where lmpemployeeid = " & App.Convert.StringToSQL(EmpID) & " and lmptimecarddate = " & SQLDateString(TcDay.CalanderDate) , Connection, adOpenStatic, adLockBatchOptimistic, adCmdText
+			While NOT rsTimeCards.EOF  
+			
+				TimeCardID = rsTimeCards.Fields("lmpTimeCardID").value
+				ShiftID = rsTimeCards.Fields("lmpShiftId").value
+				
+				Set rsBreak = CreateObject("adodb.recordset")
+				sqlBreak = "Select Top 1 lmtBreak2StartTime, lmtBreak2EndTime from ShiftBreaks Where lmtShiftID = " & rsTimeCards.Fields("lmpShiftId").value
+				rsBreak.Open sqlBreak, Connection, adOpenStatic, adLockBatchOptimistic, adCmdText
+	
+				connection.execute "UPDATE Timecards SET lmpMachineHours = ISNULL((SELECT SUM(lmlMachineHours) FROM TimecardLines WHERE lmlTimecardID = " & TimeCardID & "),0) WHERE lmpTimecardID = " & TimeCardID
+				rStartTime = SQLexecute("Select Top 1 lmlRoundedStartTime  From TimecardLines Where lmlTimecardId = " & TimeCardID & " And lmlRoundedStartTime Is Not Null  Order By lmlRoundedStartTime")
+				aStartTime = SQLexecute("Select Top 1 lmlActualStartTime  From TimecardLines Where lmlTimecardId = " & TimeCardID & " And lmlActualStartTime Is Not Null  Order By lmlActualStartTime")
+				rEndTime   = SQLexecute("Select Top 1 lmlRoundedEndTime  From TimecardLines Where lmlTimecardId = " & TimeCardID & " And lmlRoundedEndTime Is Not Null  Order By lmlRoundedEndTime Desc")
+				aEndTime   = SQLexecute("Select Top 1 lmlActualEndTime  From TimecardLines Where lmlTimecardId = " & TimeCardID & " And lmlActualEndTime Is Not Null  Order By lmlActualEndTime Desc")	
+
+			set rsShifts = CreateObject("adodb.recordset")
+			ShiftSQL = "Select * from Shifts Where lmsShiftID = (select lmeDefaultShiftID from Employees where lmeEmployeeID = " & App.Convert.StringToSQL(EmpID) & ")" 
+			rsShifts.Open ShiftSQL, Connection, adOpenStatic, adLockBatchOptimistic, adCmdText
+			
+			'Get Shift
+			Set rsEmployees = CreateObject("adodb.recordset")
+			rsEmployees.Open "select lmeDefaultShiftID from Employees where lmeEmployeeID = " & App.Convert.StringToSQL(EmpID), Connection, adOpenStatic, adLockBatchOptimistic, adCmdText
+
+			 set cd = new TSday
+			 cd.CalanderDate = currentDay
+			 m1Day = cd.M1Day
+			'Get End Shift
+			ShiftEnd = SQLexecute("Select lmtEndTime from ShiftBreaks where lmtDay = " & m1Day & " and lmtShiftID = " & rsEmployees.Fields("lmeDefaultShiftID").value)
+				
+				rEndTimeHour = datepart("h", rEndTime)
+				rEndTimeMin = datepart("n", rEndTime)
+				rEndTimeHourMin = dateadd("n", rEndTimeMin, rEndTimeHour)
+
+			If rsShifts.Fields("lmsRoundClockWithinShift").Value = True Then
+				If CDBL(rEndTimeHourMin) < CDBL(ShiftEnd) Then 
+					rEndTime = RoundedShiftTime(rsShifts.Fields("lmsRoundTo").Value, rsShifts.Fields("lmsRoundClockOutDirection").Value, rEndTime)
+				End If
+			End If
+		
+			If rsShifts.Fields("lmsRoundOutsideOfShift").Value = True Then 
+				If CDBL(rEndTimeHourMin) > CDBL(ShiftEnd) Then 
+					rEndTime = RoundedShiftTime(rsShifts.Fields("lmsRoundTo").Value, rsShifts.Fields("lmsRoundClockOutDirection").Value, rEndTime)
+				End If
+			End If									
+				
+			rsShifts.Close
+				'Arithmetic Overflow at 277hours on Indirect
+				connection.execute "UPDATE Timecards SET" & _
+													" lmpRoundedStartTime = " & App.Convert.StringToSQL(rStartTime)  & ", " & _
+													" lmpActualStartTime = " & App.Convert.StringToSQL(aStartTime) & ", " & _
+													" lmpRoundedEndTime = " & App.Convert.StringToSQL(rEndTime)  & ", " & _
+													" lmpActualEndTime = " & App.Convert.StringToSQL(aEndTime) & ", " & _
+													" lmpPayrollHours = " & TimeBlock2Hours(rStartTime ,rEndTime, TcDay.CalanderDate, TcDay.M1Day, ShiftID)	& _
+													" WHERE ((lmpTimecardID = "& TimeCardID &"))"
+			rsTimeCards.movenext
+			wend
+		end if
+	next
+    
+=========
+Function RoundedShiftTime(RoundTo, ClockOutDirection, RoundedEndTime)
+	RoundTo = CDBL(RoundTo)
+	RoundedEndTime = CDBL(RoundedEndTime)
+	
+	'Number of Different Sections of Time
+	TimeBlocks = (60 / RoundTo)
+	
+	'The Center of a Timeblock to determine whether to round up or down
+	TimeBlockMidPoint = (RoundTo / 2)
+	
+	'Hours
+	RoundedEndTimeHours = datePart("h", RoundedEndTime)
+	
+	'Mins
+	RoundedEndTimeMinutes = datePart("n", RoundedEndTime)
+	REndMins = RoundedEndTimeMinutes
+	
+	'Secs
+	RoundedEndTimeSeconds = datePart("s", RoundedEndTime)
+	
+	Counter = 0
+	'For loop for # of Timeblocks to get the number of minutes which will be used to determine the rounding operation
+	For i = 1 to TimeBlocks
+		If cDBL(RoundedEndTimeMinutes) >= RoundTo Then 
+			RoundingMinutes = cDBL(RoundedEndTimeMinutes) - RoundTo
+			RoundedEndTimeMinutes = RoundingMinutes
+			Counter = Counter + 1
+		End If
+		
+		If cDBL(RoundedEndTimeMinutes) < RoundTo AND Counter = 0 Then
+			RoundingMinutes = RoundedEndTimeMinutes
+		End If
+	Next 
+	
+	'Rounding operations based on comparison
+	If RoundingMinutes >= TimeBlockMidPoint Then 
+		EndTime = RoundTo
+	Else
+		EndTime = 0
+	End If
+	
+	EndTime = EndTime + (Counter * RoundTo)
+	RoundedEndTime = dateadd("n", -REndMins, RoundedEndTime)
+	FinalTime = dateadd("n", EndTime, RoundedEndTime)
+	RoundedShiftTime = FinalTime
+End Function
+    
+    
