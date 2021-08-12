@@ -1,0 +1,57 @@
+Deliverables 
+
+On Sales Order Line Item Entry, add a checkbox for “Shipping Hold”. Include a Date/Time, and a User (both read only) that records who/when the box was checked/unchecked. Also add a text box (free form) for the “Reason for Shipping Hold”.
+On Sales Order Line Item Entry > Deposit Info Section > Add a checkbox for “CC Paid”.
+ON Sales Order Delivery Entry > Completion Info Section > Add a checkbox for “Source Inspection Complete”.
+In ShipmentLines validation, give a validation error the SO Line item is flagged Shipping Hold. Include the reason for the shipping hold in the validation error. Give another separate validation error if the terms code of the sales order is Credit Card or Adv Payment and the CC Paid checkbox is unchecked. In addition, if the Source Inspection Complete is unchecked in combination with any/all of the “Customer Source Inspection Required” or “Government Source Inspection Required” checked then give another validation error.
+Modify the Job_Traveler_Custom.rpt to show the related sales order number just below the job number. It will be related by the project ID on the job. There is only ever one sales order attached to a project.
+
+==========
+This project spanned 06/21/2021-06/23/2021 ~ 10 Hours
+
+'Shipping Hold
+Function ShipmentLines_Valid(sender, e) 
+	dim rsSalesOrders
+	set rsSalesOrders = createObject("ADODB.Recordset")
+	sqlSalesOrders = "Select ompPaymentTermID, uompCustSourceInspReq, uompGovSourceInspReq from SalesOrders where ompSalesOrderID = " & App.convert.StringToSql(Fields("smlSalesOrderID").Value)
+	rsSalesOrders.open sqlSalesOrders, Connection, adOpenStatic, adLockBatchOptimistic, adCmdText
+	
+	
+	dim rsSalesOrderLines
+	set rsSalesOrderLines = createObject("ADODB.Recordset")
+	sqlSalesOrderLines = "Select uomlCcPaid from SalesOrderLines where omlSalesOrderID = " & App.convert.StringToSql(Fields("smlSalesOrderID").Value) & _
+																								" and omlSalesOrderLineID = " & App.convert.StringToSql(Fields("smlSalesOrderLineID").Value)
+	rsSalesOrderLines.open sqlSalesOrderLines, Connection, adOpenStatic, adLockBatchOptimistic, adCmdText
+	
+	
+	dim rsSalesOrderDeliveries
+	set rsSalesOrderDeliveries = createObject("ADODB.Recordset")
+	sqlSalesOrderDeliveries = "Select uomdShippingHold, uomdShipHoldReasons, uomdSourceInspectionComplete from SalesOrderDeliveries" & _
+																		" where omdSalesOrderID = " & App.convert.StringToSql(Fields("smlSalesOrderID").Value) & _
+																		" and omdSalesOrderLineID = " & App.convert.StringToSql(Fields("smlSalesOrderLineID").Value) & _
+																		" and omdSalesOrderDeliveryID = " & App.convert.StringToSql(Fields("smlSalesOrderDeliveryID").Value)
+	rsSalesOrderDeliveries.open sqlSalesOrderDeliveries, Connection, adOpenStatic, adLockBatchOptimistic, adCmdText
+
+
+	'Validation If Shipping hold is checked
+	If rsSalesOrderDeliveries.Fields("uomdShippingHold").Value = True then 
+			e.AddError "Sales Order Line Item is Flagged for Shipping Hold. Reason: " & rsSalesOrderDeliveries.Fields("uomdShipHoldReasons").Value
+	End if
+	
+	
+	'Validation If Credit Card or Adv Payment checked and the CC Paid is NOT checked
+	If rsSalesOrderLines.Fields("uomlCcPaid").Value = False then
+			SELECT CASE rsSalesOrders.Fields(0)
+	    		 	'CASE "ADV", "CCARD"
+					 		'e.AddError "Sales Order Payment Type is Credit Card or Adv Payment and CC Paid is NOT checked"
+						 CASE "CCARD"
+								e.AddError "Sales Order Payment Type is Credit Card and CC Paid is NOT checked"
+			End Select
+	End If
+
+
+	'Validation If custSource or govSource checked and sourceInspect is NOT checked 
+	If rsSalesOrderDeliveries.Fields("uomdSourceInspectionComplete") = False and (rsSalesOrders.Fields("uompCustSourceInspReq") = True or rsSalesOrders.Fields("uompGovSourceInspReq") = True) then
+					e.AddError "Customer Source Inspection Required and/or Goverment Source Inspection Required is checked while Source Inspection Complete is NOT checked"
+	End If
+end function
