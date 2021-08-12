@@ -1,0 +1,94 @@
+Project Description and Deliverables:
+
+We will add 2 custom buttons into the Quoting Module.  1 will be on the quote header, and the other on the quote line form.  Button will be called “Apply Markup”.  Next to each of these buttons will be a numeric text editor for “markup percent”. 
+
+When clicked, code will multiply the existing calculated unit price by the new markup percent and round to the nearest dollar.  If a full revised unit price is already present, it will add the markup to that value instead of the calculated unit price. 
+
+If the button is selected on the quote header, the code will run for all related quote lines, and if on the quote line, then just for that quote line.
+
+The system will track whether the “Apply Markup” utility has been run and if so, the button will be disabled to prevent accidental additional usage.  This can be overridden by deselecting the “markup applied” checkbox.
+
+
+=========
+Project Completed 07/15/2021-07/16/2021 ~ 3 Hours
+
+'Quote Header
+
+Function btnApplyMarkup_Click(sender, e)
+	Dim QuoteID
+	Dim MarkupPercent
+	
+	MarkupPercent = CDBL(Controls("M1DataControl").Recordset.Fields("uqmpMarkupPercent").Value) / 100
+	QuoteID = Controls("M1DataControl").Recordset.Fields("qmpQuoteID").Value
+		
+	Dim sSql
+	sSql = "UPDATE QuoteQuantities " &_
+				 " SET qmqCalculatedUnitPrice = (CASE " &_
+				 " 	WHEN qmqFullRevisedUnitPriceBase = 0 Then ROUND((qmqCalculatedUnitPrice * " & MarkupPercent & ") + qmqCalculatedUnitPrice, 0) " &_
+				 "	 ELSE qmqCalculatedUnitPrice END), " &_
+				 "	qmqFullRevisedUnitPriceBase = (CASE " &_
+				 " 	WHEN qmqFullRevisedUnitPriceBase <> 0 Then ROUND((qmqFullRevisedUnitPriceBase * " & MarkupPercent & ") + qmqFullRevisedUnitPriceBase, 0) " &_
+				 "	 ELSE qmqFullRevisedUnitPriceBase END), " &_
+				 "  uqmqMarkupApplied = 1 " &_
+				 " WHERE qmqQuoteID = " & App.Convert.STringToSQL(QuoteID) &_
+				 " AND uqmqMarkupApplied = 0 "
+	Connection.Execute sSql
+End Function
+
+Function cmdStdMessage_Click(sender, e)
+	Set rsStdMsg = CreateObject("ADODB.Recordset")
+	SQL = "Select xamLongDescriptionText From StandardMessages where xamStandardMessageID = " & App.Convert.StringToSql(Controls("cmbQmpStandardMessageID").Value)
+	rsStdMsg.Open SQL,Connection,3,1
+	Footer = Controls("txtQmpQuoteFooterMessageRTF").ValueText
+	Footer = Footer & Chr(13) & rsStdMsg.Fields("xamLongDescriptionText").Value
+	Controls("txtQmpQuoteFooterMessageRTF").ValueText = Footer
+End Function
+
+
+'Quote Lines
+
+Function btnApplyMarkup_Click(sender, e)
+	Dim QuoteID
+	Dim MarkupPercent
+	
+	MarkupPercent = CDBL(Controls("M1DataControl").Recordset.Fields("uqmlMarkupPercent").Value) / 100
+	QuoteID = Controls("M1DataControl").Recordset.Fields("qmlQuoteID").Value
+	QuoteLineID = Controls("M1DataControl").Recordset.Fields("qmlQuoteLineID").Value
+
+	If this.SaveView = 0 then 
+		Dim sSql
+		sSql = "UPDATE QuoteQuantities " &_
+				 	" SET qmqCalculatedUnitPrice = (CASE " &_
+				 	" 	WHEN qmqFullRevisedUnitPriceBase = 0 Then ROUND((qmqCalculatedUnitPrice * " & MarkupPercent & ") + qmqCalculatedUnitPrice, 0) " &_
+				 	"	 ELSE qmqCalculatedUnitPrice END), " &_
+				 	"	qmqFullRevisedUnitPriceBase = (CASE " &_
+				 	" 	WHEN qmqFullRevisedUnitPriceBase <> 0 Then ROUND((qmqFullRevisedUnitPriceBase * " & MarkupPercent & ") + qmqFullRevisedUnitPriceBase, 0) " &_
+				 	"	 ELSE qmqFullRevisedUnitPriceBase END), " &_
+				 	"  uqmqMarkupApplied = 1 " &_
+				 	" WHERE qmqQuoteID = " & App.Convert.STringToSQL(QuoteID) &_
+				 	" AND uqmqMarkupApplied = 0 " & _
+				 	" AND qmqQuoteLineID = " & QuoteLineID
+		Connection.Execute sSql
+		this.OnDataChanged(3)
+	end if
+End Function
+
+
+=========
+Snippet from Heirarchy Customization
+Quote Heirarchy
+
+'Quote Category
+Function M1DataControl_RecordChange(sender, e)
+	Dim rsParts
+	Set rsParts = CreateObject("ADODB.RecordSet")
+	
+	rsParts.open "Select impPartID, impShortDescription, imhPartUnitSalePriceID, imhUnitSalePrice" & _ 
+							 " From uPartQuoteCategories Inner Join Parts On Parts.impPartID = uPartQuoteCategories.upcPartID" & _
+							 " Inner Join PartUnitSalePrices On impPartID = imhPartID" & _
+							 " Where upcQuoteCategoryID = " & Controls("M1DataControl").Fields("uqlQuoteCategoryID") & _ 
+							 " AND upcQuoteSectionID = " & Controls("M1DataControl").Fields("uqlQuoteSectionID") & _
+							 " AND upcQuoteSectionLineID = " & Controls("M1DataControl").Fields("uqlQuoteSectionLineID"), Connection, adOpenStatic, adLockBatchOptimistic, adCmdText 
+	
+	Controls("grdParts").setGridRS rsParts
+End Function
