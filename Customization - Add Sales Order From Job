@@ -1,0 +1,139 @@
+'Sales Order Form Code
+
+Function cmdAddJob_Click(sender, e)
+
+	this.SaveView
+	Call Forms.OpenObject("SalesOrder", Array(controls("txtOmpSalesOrderID").value),"",False)
+
+End Function
+	
+	
+Function txtJobID_Change(sender, e)
+
+	If Controls("txtJobID").Value <> "" Then
+		Dim sSql
+		Dim oRs: Set oRs = CreateObject("ADODB.Recordset")
+		sSql = "SELECT jmpJobID FROM Jobs WHERE jmpJobID = " & App.Convert.StringToSql(Controls("txtJobID").Value)
+		oRs.Open sSql, Connection, adOpenStatic, adLockBatchOptimistic, adCmdText
+		
+		'Validation
+		If Not oRs.EOF then 
+			Controls("M1DataControl").Fields("uompJobEntry").Value = oRs.Fields("jmpJobID").Value
+		Else
+			Msgbox "Job ID Is Not Valid!", 16, "Confirm"
+			Controls("txtJobID").Value = e.PreviousValue
+		End If
+	End If
+End Function
+
+
+Function txtJobID_ValueChanged(sender, e)
+	
+	Dim sSql
+	Dim oRs: Set oRs = CreateObject("ADODB.Recordset")
+	sSql = "SELECT jmpJobID FROM Jobs WHERE jmpJobID = " & App.Convert.StringToSql(Controls("txtJobID").Value) & " AND jmpJobID NOT IN (SELECT omjJobID FROM SalesOrderJobLinks)"
+	oRs.Open sSql, Connection, adOpenStatic, adLockBatchOptimistic, adCmdText
+	
+	If Not oRs.EOF AND Controls("txtompSalesOrderID").Value = "" then 
+		Controls("cmdAddJob").Enabled = True
+	end if
+	
+End Function
+
+
+Function M1DataControl_RecordChange(sender, e)
+	
+	'Reverts the value when navigating 
+	Controls("txtJobID").Value = Controls("M1DataControl").Fields("uompJobEntry").Value
+	
+End Function
+
+
+Function txtJobID_SearchOnSelect(sender, e)
+	
+	'Updates on grid selection
+	Call txtJobID_Change(Sender, e)
+	
+End Function
+	
+=======================================  
+'Add From Jobs Open With on Sales Orders
+
+'Global Variables
+Dim oBs_SalesOrders
+Dim oRs_Jobs
+Dim Row_SalesOrderLines
+
+Function ProcessCommand(arg)
+	
+		Call CreateSalesOrder(arg)
+		Call CreateSalesOrderLines(arg)
+		Call CreateSalesOrderJobLinks(arg)
+			
+		'Automatically Saves
+		arg.SaveData = True
+	
+End Function
+
+
+Function CreateSalesOrder(arg)
+	
+	'Binding Source from Sales Orders
+	Set oBs_SalesOrders = Arg.BindingSource
+	
+	'Recordset of Jobs
+	Set oRs_Jobs = CreateObject("ADODB.Recordset")
+	oRs_Jobs.Open "Select * From Jobs Where jmpJobID = " & App.Convert.StringToSql(oBs_SalesOrders.Fields("uompJobEntry").Value), Connection, adOpenStatic, adLockBatchOptimistic, adCmdText	
+	
+	'Copy Matching Fields
+	oBs_SalesOrders.Fields("ompSalesOrderID").Value = oRs_Jobs.Fields("jmpJobID").Value
+	oBs_SalesOrders.Fields("ompProjectID").Value = oRs_Jobs.Fields("jmpProjectID").Value
+	oBs_SalesOrders.Fields("ompPlantDepartmentID").Value = oRs_Jobs.Fields("jmpPlantDepartmentID").Value
+	oBs_SalesOrders.Fields("ompCallID").Value = oRs_Jobs.Fields("jmpCallID").Value
+	oBs_SalesOrders.Fields("ompCustomerOrganizationID").Value = oRs_Jobs.Fields("jmpCustomerOrganizationID").Value
+	oBs_SalesOrders.Fields("ompShipOrganizationID").Value = oRs_Jobs.Fields("jmpShipOrganizationID").Value
+	oBs_SalesOrders.Fields("ompShipLocationID").Value = oRs_Jobs.Fields("jmpShipLocationID").Value
+	oBs_SalesOrders.Fields("ompReadyToPrint").Value = oRs_Jobs.Fields("jmpReadyToPrint").Value
+	
+End Function
+		
+		
+Function CreateSalesOrderLines(arg)
+	
+	'Create Child Binding Source for Sales Order Lines
+	Set oBs_SalesOrderLines = oBs_SalesOrders.PrimaryTable.GetChildBindingSource("SalesOrderLines")
+	Set Row_SalesOrderLines = oBs_SalesOrderLines.AddNewAsRS()
+	
+	'Set Values
+	Row_SalesOrderLines.Fields("omlPartID").Value = oRs_Jobs.Fields("jmpPartID").Value
+	Row_SalesOrderLines.Fields("omlOrderQuantity").Value = oRs_Jobs.Fields("jmpOrderQuantity").Value
+	Row_SalesOrderLines.Fields("omlPartShortDescription").Value = oRs_Jobs.Fields("jmpPartShortDescription").Value
+	Row_SalesOrderLines.UpdateBatch
+	
+End Function
+	
+
+Function CreateSalesOrderJobLinks(arg)
+
+	'SQL Statement to Generate Sales Order Job Links
+	sql = "Insert Into SalesOrderJobLinks(omjSalesOrderID, omjSalesOrderLineID, omjSalesOrderJobLinkID, omjLinkType, omjSalesOrderDeliveryID, omjJobID, omjClosed, omjCreatedBy, omjCreatedDate) " &_
+				"Values("& App.Convert.StringToSql(oRs_Jobs.Fields("jmpJobID").Value) & ", " &_
+									 App.Convert.StringToSQL(Row_SalesOrderLines.Fields("omlSalesOrderLineID").Value) & ", " &_
+									 App.Convert.StringToSQL(1) & ", " &_
+									 App.Convert.StringToSQL(3) & ", " &_
+									 App.Convert.StringToSQL(1) & ", " &_
+									 App.Convert.StringToSQL(oRs_Jobs.Fields("jmpJobID").Value) & ", " &_
+									 App.Convert.StringToSQL(0) & ", " &_
+									 App.Convert.StringToSQL(App.UserID) & ", " &_
+									 App.Convert.StringToSQL(Now()) & ")"
+	Connection.Execute sql
+	
+End Function
+
+---------
+'Open Withs Enabled Expression (Filter)
+Record.Table.GetChildBindingSource("SalesOrderLines").Count = 0 _
+AND Connection.Execute("Select jmpJobID From Jobs Where jmpClosed = 0 " &_
+" AND jmpJobID = " & App.Convert.StringToSql(Fields("uompJobEntry").Value) &_
+" AND jmpJobID NOT IN (Select omjJobID from SalesOrderJobLinks)").RecordCount <> 0 _ 
+AND Fields("ompSalesOrderID").Value = ""
