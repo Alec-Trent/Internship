@@ -1,0 +1,27 @@
+All projects were completed using VBS and SQL in M1. M1 is a manufacturing ERP software. All sensitive information removed.
+
+Customizations:
+Shipment Lines Duplicated in a Grid
+AR-Invoice Quick Create Repeatable
+Time Card Wizard Repeatable
+Assisted with Building a Configurator
+Time Card Wizard Upgrade to Handle Indirect Time Cards and Rounding Shift Times
+Quote Price Markup
+Quote Category Hierarchy
+Add Sales Order From Job
+
+
+Crystal Reports:
+Custom Shipment Slip Report
+Custom Receipt Label Print
+Custom Quote Print
+Custom Packing Slip
+
+
+Updrades:
+Five completed
+
+
+Misc:
+Populated Odoo (Internal System) Knowledge Base
+  This condeses all notes to a single system for easy access to reference materials which aides with further development.
