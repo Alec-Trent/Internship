@@ -1,3 +1,23 @@
+Project Description and Deliverables
+
+Add a custom “Add From” button on the Sales Order form to “Add From Job” and a related field next to this command for Job ID.
+
+The command will be disabled if no Job ID has been selected or a sales order line already exists for this record.
+
+The Job ID field can be manually keyed into or an existing Job ID selected by clicking on the grid/search icon.  This search will display all jobs with no related sales order.
+
+When the user clicks on the command to “Add From Job”, custom code will identify all like fields that can be populated based on the data already available for the Job.
+
+The Sales Order ID must be the same ID as the selected Job ID.
+
+There should only be 1 sales order line and delivery created.  The part ID on the Sales Order Line will be that of the Job’s main parent assembly.
+
+Sales Order Line quantity will come from the Job Qty field.  Typically the value is 1.
+
+Job/Sales Order Line link should be generated, with a link type of indirect link (existing job).
+
+
+=========================
 Written on 08/9/2021 - 08/11/2021 ~11 Hours to Complete
 
 'Sales Order Form Code
